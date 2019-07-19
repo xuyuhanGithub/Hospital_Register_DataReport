@@ -95,7 +95,7 @@ public class DataReport {
 
 //                String dt = jsonObject.getString("dt");
                 String areaCode = jsonObject.getString("loc_area");
-                //System.out.println("这条的地区的代号为："+loc_area);
+                //System.out.println("这条的地区的代号为："+areaCode);
 
                 //获取映射地区
                 String area = allmap.get(areaCode);
