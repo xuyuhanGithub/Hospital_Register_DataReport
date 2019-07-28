@@ -4,6 +4,7 @@ package org.hay;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import org.apache.flink.api.java.tuple.Tuple5;
 import org.apache.flink.contrib.streaming.state.RocksDBStateBackend;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.environment.CheckpointConfig;
@@ -96,11 +97,14 @@ public class DataReport {
 //                String dt = jsonObject.getString("dt");
                 String areaCode = jsonObject.getString("loc_area");
                 //System.out.println("这条的地区的代号为："+areaCode);
+                String disType = jsonObject.getString("dis_type");
 
-                //获取映射地区
+                //获取映射地区与科室
                 String area = allmap.get(areaCode);
-                System.out.println("这条的是：" + area);
+                String dis = allmap.get(disType);
+//                System.out.println("这条的是：" + area);
                 jsonObject.put("loc_area",area);
+                jsonObject.put("dis_type",dis);
                 out.collect(jsonObject.toJSONString());
                 }
 
@@ -156,8 +160,8 @@ public class DataReport {
         //保存迟到的数据
         OutputTag<Tuple4<Long, String, String ,String>> outputTag = new OutputTag<Tuple4<Long, String, String,String>>("late-data"){};
 
-        SingleOutputStreamOperator<Tuple4<String, String, String, String>> resultData = filterData.assignTimestampsAndWatermarks(new myWatermark())
-                .keyBy(1, 2, 3 ).window(TumblingEventTimeWindows.of(Time.seconds(5)))
+        SingleOutputStreamOperator<Tuple5<String, String, String, String,Long>> resultData = filterData.assignTimestampsAndWatermarks(new myWatermark())
+                .keyBy(1,2,3).window(TumblingEventTimeWindows.of(Time.seconds(5)))
                 .allowedLateness(Time.seconds(3))
                 .sideOutputLateData(outputTag)
                 .apply(new MyAggFunction());
@@ -192,18 +196,17 @@ public class DataReport {
         List<HttpHost> httpHosts = new ArrayList<>();
         httpHosts.add(new HttpHost("172.19.45.93", 9200, "http"));
 
-        ElasticsearchSink.Builder<Tuple4<String, String, String, String>> esSinkBuilder = new ElasticsearchSink.Builder<Tuple4<String, String, String, String>>(
+        ElasticsearchSink.Builder<Tuple4<Long, String, String, String>> esSinkBuilder = new ElasticsearchSink.Builder<Tuple4<Long, String, String, String>>(
                 httpHosts,
-                new ElasticsearchSinkFunction<Tuple4<String, String, String, String>>() {
-                    public IndexRequest createIndexRequest(Tuple4<String, String, String, String> element) {
+                new ElasticsearchSinkFunction<Tuple4<Long, String, String, String>>() {
+                    public IndexRequest createIndexRequest(Tuple4<Long, String, String, String> element) {
                         Map<String, Object> json = new HashMap<>();
                         json.put("time", element.f0);
                         json.put("dis_type", element.f1);
                         json.put("loca_area", element.f2);
                         json.put("sex", element.f3);
 
-                        String id = element.f0.replace(" ", "_") +
-                                "-" + element.f1 + "-" + element.f2;
+                        String id = element.f0 + "-" + element.f1 + "-" + element.f2+ "-" + element.f3;
 
                         return Requests.indexRequest()
                                 .index("registerindex")
@@ -213,7 +216,7 @@ public class DataReport {
                     }
 
                     @Override
-                    public void process(Tuple4<String, String, String, String> element, RuntimeContext ctx, RequestIndexer indexer) {
+                    public void process(Tuple4<Long, String, String, String> element, RuntimeContext ctx, RequestIndexer indexer) {
                         indexer.add(createIndexRequest(element));
                     }
                 }
@@ -222,7 +225,7 @@ public class DataReport {
         //设置批量写数据到es缓冲区大小
         esSinkBuilder.setBulkFlushMaxActions(1);
 
-        resultData.addSink(esSinkBuilder.build());
+        mapData.addSink(esSinkBuilder.build());
 
         env.execute("RegisterReport");
 

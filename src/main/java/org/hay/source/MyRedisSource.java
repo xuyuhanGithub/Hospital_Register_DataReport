@@ -47,6 +47,15 @@ public class MyRedisSource implements SourceFunction<HashMap<String, String>> {
                         keyValuemap.put(split, key);
                     }
                 }
+                Map<String, String> dis_type = jedis.hgetAll("dis_type");
+                for (Map.Entry<String, String> entry : dis_type.entrySet()) {
+                    String key = entry.getKey();
+                    String value = entry.getValue();
+                    String[] splits = value.split(",");
+                    for (String split : splits) {
+                        keyValuemap.put(split, key);
+                    }
+                }
                 if (keyValuemap.size() > 0) {
                     sourceContext.collect(keyValuemap);
                 } else {
